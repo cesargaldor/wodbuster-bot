@@ -1,44 +1,47 @@
 import axios from "axios";
+import { DateTime } from "luxon";
 import { notify } from "./utils/telegram";
 import { getSavedCookie, loginAndSaveCookie } from "./utils/db";
 
-// --- CONFIGURACIÓN ---
-const USER = process.env.WOD_USER;
-const PASS = process.env.WOD_PASS;
-const IDU = process.env.IDU;
-const TARGET_HOUR = process.env.TARGET_HOUR;
-const TARGET_TYPE = process.env.TARGET_TYPE;
+const USER = process.env.WOD_USER as string;
+const PASS = process.env.WOD_PASS as string;
+const IDU = process.env.IDU as string;
+const TARGET_HOUR = process.env.TARGET_HOUR as string;
+const TARGET_TYPE = process.env.TARGET_TYPE as string;
+const TARGET_DAY = process.env.TARGET_DAY as string;
 
-// --- FUNCIÓN PRINCIPAL ---
 async function runSniper() {
   try {
-    let cookieStr = getSavedCookie();
+    let cookieValue = getSavedCookie();
+    let targetDate: DateTime;
+    const zona = "Europe/Madrid";
 
-    // 1. Calcular Ticks (Clase dentro de 2 días)
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + 2);
-    targetDate.setHours(0, 0, 0, 0);
-    const ticks = Math.floor(targetDate.getTime() / 1000);
+    // 1. Gestión de Fechas
+    if (TARGET_DAY) {
+      targetDate = DateTime.fromFormat(TARGET_DAY, "dd/MM/yyyy", { zone: zona }).startOf("day");
+    } else {
+      targetDate = DateTime.now().setZone(zona).plus({ days: 2 }).startOf("day");
+    }
+
+    if (!targetDate.isValid) throw new Error("Fecha TARGET_DAY no válida. Usa DD/MM/YYYY");
+
+    const ticks = Math.floor(targetDate.toSeconds() + targetDate.offset * 60);
 
     const loadUrl = `https://nasara.wodbuster.com/athlete/handlers/LoadClass.ashx?ticks=${ticks}&idu=${IDU}`;
 
+    // 2. Cargar Clases / Sesión
     let resp;
     try {
-      if (!cookieStr) throw new Error("Sin cookie");
-      console.log("📡 Probando sesión existente...");
-      resp = await axios.get(loadUrl, { headers: { Cookie: `.WBAuth=${cookieStr}` } });
-
-      console.log("Datos de la respuesta: ", resp.data);
-      // Si el JSON no tiene los campos esperados o redirige al login
-      if (typeof resp.data === "string" && resp.data.includes("login")) {
-        throw new Error("Sesión expirada");
-      }
+      if (!cookieValue) throw new Error("Sin cookie");
+      resp = await axios.get(loadUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } });
+      if (typeof resp.data === "string" && resp.data.includes("login")) throw new Error("Expirada");
     } catch (e) {
-      cookieStr = await loginAndSaveCookie();
-      resp = await axios.get(loadUrl, { headers: { Cookie: `.WBAuth=${cookieStr}` } });
+      console.log("🔄 Renovando sesión...");
+      cookieValue = await loginAndSaveCookie();
+      resp = await axios.get(loadUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } });
     }
 
-    // 2. Localizar ID de la clase
+    // 3. Buscar ID
     const classId =
       resp.data.ListClases?.find((c: any) => c.Hora === TARGET_HOUR && c.NombreE.includes(TARGET_TYPE))?.Id ||
       resp.data.Data?.find((d: any) => d.Hora === TARGET_HOUR)?.Valores.find((v: any) =>
@@ -46,42 +49,44 @@ async function runSniper() {
       )?.Valor.Id;
 
     if (!classId) {
-      throw new Error(`No se encontró la clase ${TARGET_TYPE} a las ${TARGET_HOUR}`);
-    }
-
-    console.log(`🎯 Objetivo fijado: ID ${classId}. Esperando a la hora ${TARGET_HOUR}...`);
-
-    // 3. Sniper (Espera activa los últimos segundos)
-    while (true) {
-      const now = new Date();
-      if (now.getHours() === 22 && now.getMinutes() === 0 && now.getSeconds() === 0) {
-        break;
-      }
-      // Pequeño respiro de 100ms para no quemar la CPU hasta el último segundo
-      if (now.getHours() < 22) await new Promise((r) => setTimeout(r, 100));
-    }
-
-    // 4. Disparo en ráfaga
-    const reserveUrl = `https://nasara.wodbuster.com/athlete/handlers/Calendario_Inscribir.ashx?id=${classId}&ticks=${ticks}&idu=${IDU}`;
-    console.log("🚀 FUEGO!");
-
-    const burst = await Promise.all([
-      axios.get(reserveUrl, { headers: { Cookie: cookieStr } }),
-      axios.get(reserveUrl, { headers: { Cookie: cookieStr } }),
-      axios.get(reserveUrl, { headers: { Cookie: cookieStr } }),
-    ]);
-
-    const exito = burst.some(
-      (r) => JSON.stringify(r.data).includes("OK") || JSON.stringify(r.data).includes("inscrito"),
-    );
-
-    if (exito) {
-      await notify(`✅ Reserva lograda para el día ${targetDate.toLocaleDateString()}`);
+      throw new Error(`Clase no encontrada para el ${targetDate.toISODate()}`);
     } else {
-      await notify(`⚠️ Error en reserva: ${JSON.stringify(burst[0].data)}`);
+      console.log("¡Clase encontrada!");
+    }
+
+    // 4. Espera
+    if (!TARGET_DAY) {
+      console.log("⏳ Esperando a las 22:00:00...");
+      while (true) {
+        const now = DateTime.now().setZone(zona);
+        if (now.hour === 22 && now.minute === 0 && now.second === 0) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+
+    // 5. Reserva
+    const reserveUrl = `https://nasara.wodbuster.com/athlete/handlers/Calendario_Inscribir.ashx?id=${classId}&ticks=${ticks}&idu=${IDU}`;
+    let responses = [];
+
+    if (TARGET_DAY) {
+      responses.push(await axios.get(reserveUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } }));
+    } else {
+      responses = await Promise.all([
+        axios.get(reserveUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } }),
+        axios.get(reserveUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } }),
+        axios.get(reserveUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } }),
+      ]);
+    }
+
+    const success = responses.some((r) => r.data?.Res?.EsCorrecto);
+
+    if (success) {
+      await notify(`✅ Reservado: ${targetDate.toFormat("dd/MM")} ${TARGET_HOUR}`);
+    } else {
+      await notify(`⚠️ Error: ${JSON.stringify(responses[0].data?.Res?.ErrorMsg)}`);
     }
   } catch (e: any) {
-    console.error("Error:", e.message);
+    console.error(e.message);
     await notify(`💀 Sniper Falló: ${e.message}`);
   }
 }
