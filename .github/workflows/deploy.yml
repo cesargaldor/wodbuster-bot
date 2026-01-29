@@ -1,4 +1,5 @@
 name: Deploy Bot
+
 on:
   push:
     branches: [main]
@@ -15,8 +16,9 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
-            source ~/.bashrc || source ~/.profile
+            export NODE_BIN="/home/cesar/.nvm/versions/node/v24.13.0/bin"
+            export PATH="$NODE_BIN:$PATH"
             cd ~/apps/wodbuster-bot
             git pull
-            pnpm install
-            pm2 restart wodbuster-bot || pm2 start "pnpm start" --name wodbuster-bot
+            $NODE_BIN/pnpm install
+            $NODE_BIN/pm2 restart wodbuster-bot || $NODE_BIN/pm2 start "pnpm start" --name wodbuster-bot
