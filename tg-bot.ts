@@ -3,6 +3,10 @@ import { setSaturdayFlag, isSaturdayRequested, resetSaturdayFlag } from "./utils
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN as string);
 
+bot.command("hola", async (ctx) => {
+  await ctx.reply("Hola! Soy el bot de control remoto.\n\n");
+});
+
 bot.command("sabado", async (ctx) => {
   setSaturdayFlag();
   await ctx.reply("🚀 ¡Entendido! El Sniper buscará clase el sábado a las 10:15.");
