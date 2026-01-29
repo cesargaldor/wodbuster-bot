@@ -5,7 +5,7 @@
   "main": "index.ts",
   "scripts": {
     "start": "tsx --env-file=.env index.ts",
-    "saturday": "tsx --env-file=.env saturday-bot.ts"
+    "bot": "tsx --env-file=.env tg-bot.ts"
   },
   "keywords": [],
   "author": "",
