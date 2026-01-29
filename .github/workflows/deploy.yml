@@ -15,7 +15,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
+            source ~/.bashrc || source ~/.profile
             cd ~/apps/wodbuster-bot
             git pull
             pnpm install
-            pm2 restart wodbuster-bot
+            pm2 restart wodbuster-bot || pm2 start "pnpm start" --name wodbuster-bot
