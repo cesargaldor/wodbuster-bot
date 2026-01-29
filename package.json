@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.ts",
   "scripts": {
-    "test": "tsx --env-file=.env index.ts"
+    "start": "tsx --env-file=.env index.ts",
+    "saturday": "tsx --env-file=.env saturday-bot.ts"
   },
   "keywords": [],
   "author": "",
@@ -13,7 +14,8 @@
   "dependencies": {
     "axios": "^1.13.4",
     "luxon": "^3.7.2",
-    "playwright": "^1.58.0"
+    "playwright": "^1.58.0",
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@types/luxon": "^3.7.1",
