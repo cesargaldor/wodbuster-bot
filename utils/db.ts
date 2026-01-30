@@ -1,11 +1,17 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
+import { Telegraf } from "telegraf";
 
-const USER = process.env.WOD_USER;
-const PASS = process.env.WOD_PASS;
+const USER = process.env.WOD_USER as string;
+const PASS = process.env.WOD_PASS as string;
+const TELEGRAM_CHAT = process.env.TELEGRAM_CHAT as string;
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN as string;
+
 const COOKIE_FILE = path.resolve("./cookie.txt");
 const SATURDAY_FILE = path.resolve("./saturday_active.txt");
+
+const bot = new Telegraf(TELEGRAM_TOKEN);
 
 export function getSavedCookie() {
   try {
@@ -32,38 +38,45 @@ export function saveCookie(cookie: string) {
 }
 
 export async function loginAndSaveCookie() {
-  console.log("🌐 Sesión expirada o faltante. Iniciando Playwright...");
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
+  const context = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  });
   const page = await context.newPage();
 
   try {
-    await page.goto("https://wodbuster.com/account/login.aspx?cb=nasara");
-    await page.fill('input[id*="body_body_CtlLogin_IoEmail"]', USER!);
-    await page.fill('input[id*="body_body_CtlLogin_IoPassword"]', PASS!);
+    await page.goto("https://wodbuster.com/account/login.aspx?cb=nasara", { waitUntil: "networkidle" });
+
+    const emailSelector = 'input[id*="body_body_CtlLogin_IoEmail"]';
+    await page.waitForSelector(emailSelector, { timeout: 10000 });
+    await page.fill(emailSelector, USER);
+    await page.fill('input[id*="body_body_CtlLogin_IoPassword"]', PASS);
     await page.click('input[id="body_body_CtlLogin_CtlAceptar"]');
 
-    console.log("⏳ Esperando pantalla de confianza...");
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
-    try {
-      const labelSelector = 'label[for="body_body_CtlConfiar_CtlNoSeguroConfianza"]';
-
-      if (await page.isVisible(labelSelector)) {
-        console.log("🖱️ Haciendo clic en el label exacto...");
-        await page.click(labelSelector);
-        await page.waitForTimeout(2000);
-      }
-    } catch (e) {
-      console.log("⏩ No se encontró el label, saltando paso...");
+    const labelSelector = 'label[for="body_body_CtlConfiar_CtlNoSeguroConfianza"]';
+    if (await page.isVisible(labelSelector)) {
+      await page.click(labelSelector);
+      await page.waitForTimeout(2000);
     }
 
-    await page.waitForURL("https://nasara.wodbuster.com/user/");
+    await page.waitForURL("https://nasara.wodbuster.com/user/", { timeout: 15000 });
+
     const cookies = await context.cookies();
     const wbAuth = cookies.find((c) => c.name === ".WBAuth")?.value;
     const cookieStr = wbAuth ?? "";
     saveCookie(cookieStr);
     return cookieStr;
+  } catch (error: any) {
+    const screenshot = await page.screenshot();
+    await bot.telegram.sendPhoto(
+      TELEGRAM_CHAT,
+      { source: screenshot },
+      { caption: `❌ Error Login:\n${error.message}` },
+    );
+    throw error;
   } finally {
     await browser.close();
   }
