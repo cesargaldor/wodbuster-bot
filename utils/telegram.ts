@@ -7,7 +7,7 @@ const bot = new Telegraf(TG_TOKEN as string);
 export async function notify(msg: string) {
   try {
     if (TG_TOKEN) {
-      bot.telegram.sendMessage(TG_CHAT as string, msg);
+      await bot.telegram.sendMessage(TG_CHAT as string, msg);
     }
   } catch (error) {
     console.error("Error enviando Telegram", error);
