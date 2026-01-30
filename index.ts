@@ -1,7 +1,8 @@
 import axios from "axios";
 import { DateTime } from "luxon";
 import { notify } from "./utils/telegram";
-import { getSavedCookie, loginAndSaveCookie, isSaturdayRequested, resetSaturdayFlag } from "./utils/db";
+import { getSavedCookie, isSaturdayRequested, resetSaturdayFlag } from "./utils/db";
+import { checkSession } from "./utils/session";
 
 // --- CONFIGURACIÓN ---
 const IDU = process.env.IDU as string;
@@ -14,7 +15,10 @@ const ZONE = "Europe/Madrid";
 
 async function runSniper() {
   try {
+    // 0. COMPROBACIÓN DE SESIÓN
+    await checkSession();
     let cookieValue = getSavedCookie();
+
     let targetDate: DateTime;
     let targetType: string = TARGET_TYPE;
 
@@ -45,19 +49,14 @@ async function runSniper() {
 
     const loadUrl = `https://nasara.wodbuster.com/athlete/handlers/LoadClass.ashx?ticks=${ticks}&idu=${IDU}`;
 
-    // 3. GESTIÓN DE SESIÓN
-    let resp;
-    try {
-      if (!cookieValue) throw new Error("Sin cookie guardada");
-      console.log("📡 Probando sesión existente...");
-      resp = await axios.get(loadUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } });
+    // 3. GESTIÓN DE RESERVA
+    console.log("📡 Cargando datos de clase...");
+    const resp = await axios.get(loadUrl, {
+      headers: { Cookie: `.WBAuth=${cookieValue}` },
+    });
 
-      if (typeof resp.data === "string" && resp.data.includes("login")) throw new Error("Sesión expirada");
-      console.log("✅ Sesión válida.");
-    } catch (e) {
-      console.log("🔄 Renovando sesión con Playwright...");
-      cookieValue = await loginAndSaveCookie();
-      resp = await axios.get(loadUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } });
+    if (typeof resp.data === "string" && resp.data.includes("login")) {
+      throw new Error(`⚠️ No se pudo reservar: ${resp.data}`);
     }
 
     // 4. BUSCAR ID DE CLASE
@@ -93,8 +92,8 @@ async function runSniper() {
       axios.get(reserveUrl, { headers: { Cookie: `.WBAuth=${cookieValue}` } }),
     ]);
 
-    // 7. ANÁLISIS Y PLAN B
-    const responses = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+    // 7. ANÁLISIS Y PLAN B (LISTA DE ESPERA)
+    const responses = results.filter((r) => r.status === "fulfilled").map((r: any) => r.value);
     const success = responses.some((r) => r.data?.Res?.EsCorrecto ?? r.data?.EsCorrecto);
     const errorMsg = responses[0]?.data?.Res?.ErrorMsg ?? responses[0]?.data?.ErrorMsg ?? "";
     const isFull = errorMsg.includes("Clase llena") || errorMsg.includes("aforo máximo");
@@ -120,12 +119,14 @@ async function runSniper() {
         await notify(`💀 Fallo en lista de espera.`);
       }
     } else {
+      console.log("⚠️ No se pudo reservar:", errorMsg);
       await notify(`⚠️ No se pudo reservar: ${errorMsg}`);
       if (isSaturday) resetSaturdayFlag();
     }
   } catch (e: any) {
     console.error("❌ ERROR:", e.message);
     await notify(`💀 Sniper Falló: ${e.message}`);
+    process.exit(1);
   }
 }
 

@@ -1,4 +1,5 @@
 import { Telegraf } from "telegraf";
+import fs from "node:fs";
 import { setSaturdayFlag, isSaturdayRequested, resetSaturdayFlag } from "./utils/db";
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN as string);
@@ -20,6 +21,17 @@ bot.command("status", async (ctx) => {
 bot.command("sabado_off", async (ctx) => {
   resetSaturdayFlag();
   await ctx.reply("😴 El modo Sábado ha sido DESACTIVADO.");
+});
+
+bot.hears(/^cookie:(.+)/, (ctx) => {
+  const newCookie = ctx.match[1].trim();
+
+  try {
+    fs.writeFileSync("./cookie.txt", newCookie, "utf-8");
+    ctx.reply("✅ Cookie actualizada correctamente en el servidor.");
+  } catch (err: any) {
+    ctx.reply("❌ Error al guardar la cookie: " + err.message);
+  }
 });
 
 bot.launch();
