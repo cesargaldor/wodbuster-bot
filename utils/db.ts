@@ -1,7 +1,7 @@
 // import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
-import { Telegraf } from "telegraf";
+// import { Telegraf } from "telegraf";
 
 // const USER = process.env.WOD_USER as string;
 // const PASS = process.env.WOD_PASS as string;
@@ -9,7 +9,7 @@ import { Telegraf } from "telegraf";
 // const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN as string;
 
 const COOKIE_FILE = path.resolve("./cookie.txt");
-const SATURDAY_FILE = path.resolve("./saturday_active.txt");
+const DAYS_CONFIG_PATH = path.resolve("./days_config.json");
 
 // const bot = new Telegraf(TELEGRAM_TOKEN);
 
@@ -89,17 +89,10 @@ export function saveCookie(cookie: string) {
 //   }
 // }
 
-export function isSaturdayRequested(): boolean {
-  return fs.existsSync(SATURDAY_FILE);
+export function getDaysConfig() {
+  return JSON.parse(fs.readFileSync(DAYS_CONFIG_PATH, "utf-8"));
 }
 
-export function resetSaturdayFlag() {
-  if (fs.existsSync(SATURDAY_FILE)) {
-    fs.unlinkSync(SATURDAY_FILE);
-    console.log("🗑️ Flag de sábado reseteado.");
-  }
-}
-
-export function setSaturdayFlag() {
-  fs.writeFileSync(SATURDAY_FILE, "true", "utf-8");
+export function saveDaysConfig(days: number[]) {
+  fs.writeFileSync(DAYS_CONFIG_PATH, JSON.stringify({ activeDays: days }));
 }

@@ -1,28 +1,59 @@
-import { Telegraf } from "telegraf";
+import { Telegraf, Markup } from "telegraf";
 import fs from "node:fs";
-import { setSaturdayFlag, isSaturdayRequested, resetSaturdayFlag } from "./utils/db";
+import { getDaysConfig, saveDaysConfig } from "./utils/db";
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN as string);
 
-bot.command("hola", async (ctx) => {
-  await ctx.reply("Hola! Soy el bot de control remoto.\n\n");
+// Aux Functions
+const weekDays = [
+  { id: 1, label: "Lun" },
+  { id: 2, label: "Mar" },
+  { id: 3, label: "Mié" },
+  { id: 4, label: "Jue" },
+  { id: 5, label: "Vie" },
+  { id: 6, label: "Sáb" },
+];
+
+const generateButtons = (activeDays: number[]) => {
+  const buttons = weekDays.map((day) => {
+    const check = activeDays.includes(day.id) ? "✅" : "❌";
+    return Markup.button.callback(`${check} ${day.label}`, `toggle_${day.id}`);
+  });
+  return Markup.inlineKeyboard(buttons, { columns: 3 });
+};
+
+// Commands
+bot.command("dias", (ctx) => {
+  const config = getDaysConfig();
+  const activeDays = config.activeDays ?? [];
+
+  ctx.reply("📅 Selecciona los días que quieres que el Sniper reserve:", generateButtons(activeDays));
 });
 
-bot.command("sabado", async (ctx) => {
-  setSaturdayFlag();
-  await ctx.reply("🚀 ¡Entendido! El Sniper buscará clase el sábado a las 10:15.");
+// --- Buttons actions ---
+
+bot.action(/toggle_(\d+)/, async (ctx) => {
+  const dayId = parseInt(ctx.match[1]);
+  let config = getDaysConfig();
+  let activeDays = config.activeDays ?? [];
+
+  if (activeDays.includes(dayId)) {
+    activeDays = activeDays.filter((d: number) => d !== dayId);
+  } else {
+    activeDays.push(dayId);
+  }
+
+  saveDaysConfig(activeDays);
+  await ctx.answerCbQuery();
+
+  try {
+    await ctx.editMessageReplyMarkup(generateButtons(activeDays).reply_markup);
+  } catch (err) {
+    // Ignore if the user clicks too fast and there are no changes
+  }
 });
 
-bot.command("status", async (ctx) => {
-  const active = isSaturdayRequested();
-  await ctx.reply(active ? "✅ El modo Sábado está ACTIVADO." : "😴 El modo Sábado está APAGADO.");
-});
-
-bot.command("sabado_off", async (ctx) => {
-  resetSaturdayFlag();
-  await ctx.reply("😴 El modo Sábado ha sido DESACTIVADO.");
-});
-
+// --- Cookie management ---
 bot.hears(/^cookie:(.+)/, (ctx) => {
   const newCookie = ctx.match[1].trim();
 
