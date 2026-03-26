@@ -1,0 +1,28 @@
+# ─── Cloudflare Workers — WodBuster Bot ──────────────────────────────────────
+#
+# Guía de primer despliegue:
+#   1. Instala wrangler:  pnpm add -D wrangler
+#   2. Autentícate:       pnpm wrangler login
+#   3. Crea el namespace KV:
+#        pnpm wrangler kv namespace create CROSSFIT_KV
+#        pnpm wrangler kv namespace create CROSSFIT_KV --preview
+#   4. Sustituye los placeholders de id y preview_id con los IDs obtenidos
+#   5. Añade los secrets:
+#        pnpm wrangler secret put TELEGRAM_TOKEN
+#        pnpm wrangler secret put TELEGRAM_CHAT
+#   6. Despliega:         pnpm wrangler deploy
+#   7. Registra el webhook de Telegram:
+#        curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://wodbuster-bot.<tu-subdominio>.workers.dev/webhook"
+# ─────────────────────────────────────────────────────────────────────────────
+
+name            = "wodbuster-bot"
+main            = "worker/index.ts"
+compatibility_date  = "2024-09-23"
+
+# nodejs_compat permite usar módulos de Node.js (necesario para telegraf)
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding    = "CROSSFIT_KV"
+id         = "5940b5ba35bf496a9184388ea1de6f73"
+preview_id = "c19f64d9a2644faea515acfb5447f126"

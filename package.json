@@ -6,7 +6,9 @@
   "scripts": {
     "start": "tsx --env-file=.env index.ts",
     "bot": "tsx --env-file=.env tg-bot.ts",
-    "check": "tsx --env-file=.env watcher.ts"
+    "check": "tsx --env-file=.env watcher.ts",
+    "deploy:worker": "wrangler deploy",
+    "typecheck:worker": "tsc --noEmit --project worker/tsconfig.json"
   },
   "keywords": [],
   "author": "",
@@ -19,8 +21,11 @@
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250317.0",
     "@types/luxon": "^3.7.1",
     "@types/node": "^25.0.10",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "wrangler": "^4.77.0"
   }
 }

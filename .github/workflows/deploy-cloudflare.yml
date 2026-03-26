@@ -1,0 +1,39 @@
+name: 🚀 Deploy — Cloudflare Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "worker/**"
+      - "wrangler.toml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Desplegar Worker a Cloudflare
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: 📚 Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: 🚀 Desplegar a Cloudflare Workers
+        run: pnpm wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}

@@ -1,0 +1,103 @@
+name: 🏋️ Booking — Reserva de clase
+
+# ─── Zona horaria ─────────────────────────────────────────────────────────────
+# Se dispara a las 19:55 UTC y 20:55 UTC cada día.
+# Un paso inicial comprueba si la hora en Madrid es las 21:xx y descarta la
+# ejecución duplicada automáticamente, sin necesidad de ajuste manual por DST:
+#
+#   · Verano  (CEST, UTC+2): 19:55 UTC = 21:55 CEST ✅ | 20:55 UTC = 22:55 ❌ (descartado)
+#   · Invierno (CET,  UTC+1): 19:55 UTC = 20:55 CET ❌ (descartado) | 20:55 UTC = 21:55 ✅
+#
+# El bucle de espera en index.ts mantendrá la sesión dormida ~5 min hasta el
+# disparo exacto a las 22:00:00.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    - cron: "55 19 * * *" # 21:55 CEST (verano, UTC+2)
+    - cron: "55 20 * * *" # 21:55 CET  (invierno, UTC+1)
+  workflow_dispatch: # Permite lanzarlo manualmente desde la pestaña Actions
+
+jobs:
+  booking:
+    name: Reservar clase CrossFit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # 15 min máximo (cubre de sobra los 5 min de espera)
+
+    steps:
+      - name: 🕐 Verificar hora (solo planificar ráfaga a las 21:55 Madrid)
+        id: check_time
+        run: |
+          MADRID_HOUR=$(TZ='Europe/Madrid' date +%H)
+          echo "Hora actual en Madrid: ${MADRID_HOUR}:xx"
+
+          if [ "$MADRID_HOUR" = "21" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "✅ Son las 21:xx en Madrid, preparando el Sniper para las 22:00..."
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ No son las 21:xx en Madrid (son las ${MADRID_HOUR}:xx). Ignorando ejecución duplicada."
+          fi
+
+      - name: 📥 Checkout
+        if: steps.check_time.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+
+      - name: 📦 Instalar pnpm
+        if: steps.check_time.outputs.should_run == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 🟢 Setup Node.js
+        if: steps.check_time.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: 📚 Instalar dependencias
+        if: steps.check_time.outputs.should_run == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: 🍪 Obtener cookie desde Cloudflare KV
+        if: steps.check_time.outputs.should_run == 'true'
+        run: |
+          COOKIE=$(curl -sf \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/storage/kv/namespaces/${{ secrets.CF_KV_NAMESPACE_ID }}/values/session_cookie" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}")
+
+          if [ -z "$COOKIE" ]; then
+            echo "❌ No se pudo obtener la cookie desde Cloudflare KV"
+            exit 1
+          fi
+
+          echo "$COOKIE" > cookie.txt
+          echo "✅ Cookie obtenida correctamente"
+
+      - name: 📅 Obtener configuración de días desde Cloudflare KV
+        if: steps.check_time.outputs.should_run == 'true'
+        run: |
+          CONFIG=$(curl -sf \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/storage/kv/namespaces/${{ secrets.CF_KV_NAMESPACE_ID }}/values/days_config" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}")
+
+          if [ -z "$CONFIG" ]; then
+            echo '{"activeDays":[]}' > days_config.json
+            echo "ℹ️ No hay configuración en KV, usando lista vacía"
+          else
+            echo "$CONFIG" > days_config.json
+            echo "✅ Configuración de días obtenida"
+          fi
+
+      - name: 🚀 Ejecutar Sniper (Esperará a las 22:00:00 exactas)
+        if: steps.check_time.outputs.should_run == 'true'
+        env:
+          IDU: ${{ secrets.IDU }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
+          TARGET_HOUR: ${{ secrets.TARGET_HOUR }}
+          TARGET_TYPE: ${{ secrets.TARGET_TYPE }}
+          TARGET_HOUR_SATURDAY: ${{ secrets.TARGET_HOUR_SATURDAY }}
+          TARGET_TYPE_SATURDAY: ${{ secrets.TARGET_TYPE_SATURDAY }}
+        run: pnpm tsx index.ts
