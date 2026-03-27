@@ -23,6 +23,8 @@ jobs:
     name: Reservar clase CrossFit
     runs-on: ubuntu-latest
     timeout-minutes: 15 # 15 min máximo (cubre de sobra los 5 min de espera)
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: 🕐 Verificar hora (solo planificar ráfaga a las 21:55 Madrid)
@@ -46,8 +48,6 @@ jobs:
       - name: 📦 Instalar pnpm
         if: steps.check_time.outputs.should_run == 'true'
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: 🟢 Setup Node.js
         if: steps.check_time.outputs.should_run == 'true'
