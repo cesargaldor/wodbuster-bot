@@ -32,6 +32,9 @@ interface TgMessage {
   from?: TgUser;
   chat: TgChat;
   text?: string;
+  reply_markup?: {
+    inline_keyboard: { text: string; callback_data?: string }[][];
+  };
 }
 interface TgCallbackQuery {
   id: string;
@@ -103,12 +106,7 @@ async function tgCall(token: string, method: string, body: object): Promise<void
   }
 }
 
-async function sendMessage(
-  token: string,
-  chatId: number,
-  text: string,
-  replyMarkup?: object,
-): Promise<void> {
+async function sendMessage(token: string, chatId: number, text: string, replyMarkup?: object): Promise<void> {
   await tgCall(token, "sendMessage", {
     chat_id: chatId,
     text,
@@ -116,12 +114,7 @@ async function sendMessage(
   });
 }
 
-async function editMessageReplyMarkup(
-  token: string,
-  chatId: number,
-  messageId: number,
-  replyMarkup: object,
-): Promise<void> {
+async function editMessageReplyMarkup(token: string, chatId: number, messageId: number, replyMarkup: object): Promise<void> {
   await tgCall(token, "editMessageReplyMarkup", {
     chat_id: chatId,
     message_id: messageId,
@@ -175,8 +168,23 @@ async function handleCallbackQuery(cb: TgCallbackQuery, env: Env): Promise<void>
   if (!match || !cb.message) return;
 
   const dayId = parseInt(match[1]);
-  let activeDays = await getActiveDays(env.CROSSFIT_KV);
 
+  let activeDays: number[] = [];
+
+  if (cb.message.reply_markup?.inline_keyboard) {
+    for (const row of cb.message.reply_markup.inline_keyboard) {
+      for (const btn of row) {
+        if (btn.text.includes("✅") && btn.callback_data) {
+          const m = btn.callback_data.match(/^toggle_(\d+)$/);
+          if (m) activeDays.push(parseInt(m[1]));
+        }
+      }
+    }
+  } else {
+    activeDays = await getActiveDays(env.CROSSFIT_KV);
+  }
+
+  // Alternamos el estado del día pulsado
   if (activeDays.includes(dayId)) {
     activeDays = activeDays.filter((d) => d !== dayId);
   } else {
@@ -188,12 +196,7 @@ async function handleCallbackQuery(cb: TgCallbackQuery, env: Env): Promise<void>
   await answerCallbackQuery(env.TELEGRAM_TOKEN, cb.id);
 
   try {
-    await editMessageReplyMarkup(
-      env.TELEGRAM_TOKEN,
-      cb.message.chat.id,
-      cb.message.message_id,
-      buildKeyboard(activeDays),
-    );
+    await editMessageReplyMarkup(env.TELEGRAM_TOKEN, cb.message.chat.id, cb.message.message_id, buildKeyboard(activeDays));
   } catch {
     // Telegram devuelve error si el teclado no cambia — ignorar
   }
@@ -218,7 +221,7 @@ export default {
       try {
         const textToParse = await request.text();
         console.log("📥 Recibido raw:", textToParse);
-        
+
         let update: TgUpdate;
         try {
           update = JSON.parse(textToParse);
