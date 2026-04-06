@@ -1,44 +1,46 @@
 name: 🏋️ Booking — Reserva de clase
 
-# ─── Zona horaria ─────────────────────────────────────────────────────────────
-# Se dispara a las 19:55 UTC y 20:55 UTC cada día.
-# Un paso inicial comprueba si la hora en Madrid es las 21:xx y descarta la
-# ejecución duplicada automáticamente, sin necesidad de ajuste manual por DST:
+# ─── Zona horaria y Retrasos de GitHub ───────────────────────────────────────
+# GitHub Actions puede retrasar la ejecución de crons varios minutos.
+# Este workflow se dispara a las 19:55 UTC y 20:55 UTC.
 #
-#   · Verano  (CEST, UTC+2): 19:55 UTC = 21:55 CEST ✅ | 20:55 UTC = 22:55 ❌ (descartado)
-#   · Invierno (CET,  UTC+1): 19:55 UTC = 20:55 CET ❌ (descartado) | 20:55 UTC = 21:55 ✅
-#
-# El bucle de espera en index.ts mantendrá la sesión dormida ~5 min hasta el
-# disparo exacto a las 22:00:00.
+# La lógica de comprobación ahora permite un margen de error:
+# Se acepta la ejecución si en Madrid son las 21:xx O si son las 22:00-22:15.
+# Esto evita que el retraso de GitHub mate el proceso antes de empezar.
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
   schedule:
-    - cron: "55 19 * * *" # 21:55 CEST (verano, UTC+2)
-    - cron: "55 20 * * *" # 21:55 CET  (invierno, UTC+1)
-  workflow_dispatch: # Permite lanzarlo manualmente desde la pestaña Actions
+    - cron: "45 19 * * *" # 21:55 CEST (verano, UTC+2)
+    - cron: "45 20 * * *" # 21:55 CET  (invierno, UTC+1)
+  workflow_dispatch: # Permite lanzarlo manualmente
 
 jobs:
   booking:
     name: Reservar clase CrossFit
     runs-on: ubuntu-latest
-    timeout-minutes: 15 # 15 min máximo (cubre de sobra los 5 min de espera)
+    timeout-minutes: 30
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: 🕐 Verificar hora (solo planificar ráfaga a las 21:55 Madrid)
+      - name: 🕐 Verificar hora (con margen para retrasos de GitHub)
         id: check_time
         run: |
+          # Extraemos hora y minuto en Madrid
           MADRID_HOUR=$(TZ='Europe/Madrid' date +%H)
-          echo "Hora actual en Madrid: ${MADRID_HOUR}:xx"
+          MADRID_MINUTE=$(TZ='Europe/Madrid' date +%M)
+          echo "Hora actual en Madrid: ${MADRID_HOUR}:${MADRID_MINUTE}"
 
-          if [ "$MADRID_HOUR" = "21" ]; then
+          # LÓGICA:
+          # Aceptamos si son las 21:xx (llegada puntual o temprana)
+          # O si son las 22:xx pero antes de las 22:15 (llegada con retraso de GitHub)
+          if [ "$MADRID_HOUR" = "21" ] || ([ "$MADRID_HOUR" = "22" ] && [ "$MADRID_MINUTE" -lt 15 ]); then
             echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "✅ Son las 21:xx en Madrid, preparando el Sniper para las 22:00..."
+            echo "✅ Ventana válida detectada. Iniciando proceso..."
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ No son las 21:xx en Madrid (son las ${MADRID_HOUR}:xx). Ignorando ejecución duplicada."
+            echo "ℹ️ Fuera de ventana horaria. Ignorando para evitar duplicados."
           fi
 
       - name: 📥 Checkout
