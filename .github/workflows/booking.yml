@@ -11,8 +11,8 @@ name: 🏋️ Booking — Reserva de clase
 
 on:
   schedule:
-    - cron: "45 19 * * *" # 21:55 CEST (verano, UTC+2)
-    - cron: "45 20 * * *" # 21:55 CET  (invierno, UTC+1)
+    - cron: "45 18 * * *" # 21:45 CEST (verano, UTC+2)
+    - cron: "45 19 * * *" # 21:45 CET  (invierno, UTC+1)
   workflow_dispatch: # Permite lanzarlo manualmente
 
 jobs:
